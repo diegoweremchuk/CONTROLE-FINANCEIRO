@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Controle Financeiro · I-LOG</title>
+<meta name="description" content="Painel de indicadores financeiros — faturamento, rentabilidade, despesas, backlog e cotações.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg:#EDF1EF;
+    --card:#FFFFFF;
+    --ink:#14211E;
+    --ink-2:#5B6B66;
+    --line:#D8E0DC;
+    --pine:#1E5C4F;
+    --pine-soft:#E3EEEA;
+    --amber:#C97F14;
+    --amber-soft:#FBF1DF;
+    --red:#B23A2A;
+    --red-soft:#F8E7E3;
+    --mono:'IBM Plex Mono',ui-monospace,monospace;
+    --sans:'Inter',system-ui,sans-serif;
+    --disp:'Archivo',var(--sans);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  @media (prefers-reduced-motion:reduce){
+    html{scroll-behavior:auto}
+    *,*::before,*::after{animation:none!important;transition:none!important}
+  }
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--sans);
+    font-size:15px;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--pine)}
+  .wrap{max-width:1160px;margin:0 auto;padding:0 20px}
+
+  /* ---------- topo ---------- */
+  header{
+    background:var(--pine);
+    color:#F2F7F5;
+    padding:26px 0 22px;
+    border-bottom:4px solid #16463C;
+  }
+  .brand{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+  .brand h1{
+    font-family:var(--disp);
+    font-weight:800;
+    font-size:clamp(1.5rem,3.4vw,2.1rem);
+    letter-spacing:-.01em;
+    text-transform:uppercase;
+  }
+  .brand .tag{
+    font-family:var(--mono);
+    font-size:.78rem;
+    color:#BFD8D0;
+    letter-spacing:.06em;
+  }
+  .updated{
+    margin-top:6px;
+    font-family:var(--mono);
+    font-size:.78rem;
+    color:#9FC3BA;
+  }
+
+  /* ---------- abas de data ---------- */
+  .snapbar{
+    background:var(--card);
+    border-bottom:1px solid var(--line);
+    position:sticky;top:0;z-index:20;
+  }
+  .snapbar .wrap{
+    display:flex;align-items:center;gap:8px;
+    padding-top:10px;padding-bottom:10px;flex-wrap:wrap;
+  }
+  .snapbar .label{
+    font-family:var(--mono);font-size:.72rem;color:var(--ink-2);
+    text-transform:uppercase;letter-spacing:.08em;margin-right:4px;
+  }
+  .snap{
+    font-family:var(--mono);font-size:.82rem;font-weight:500;
+    border:1px solid var(--line);background:var(--bg);color:var(--ink);
+    padding:7px 14px;border-radius:999px;cursor:pointer;
+    transition:background .15s,color .15s,border-color .15s;
+  }
+  .snap:hover{border-color:var(--pine)}
+  .snap[aria-pressed="true"]{background:var(--pine);border-color:var(--pine);color:#fff}
+  .snap:focus-visible,.snapbar button:focus-visible,
+  .drop:focus-visible{outline:3px solid var(--amber);outline-offset:2px}
+
+  /* ---------- destaque faturamento ---------- */
+  .hero{padding:34px 0 8px}
+  .hero .eyebrow{
+    font-family:var(--mono);font-size:.75rem;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--ink-2);
+  }
+  .hero .big{
+    font-family:var(--disp);font-weight:800;
+    font-size:clamp(2.4rem,7vw,4.4rem);
+    letter-spacing:-.02em;line-height:1.05;color:var(--pine);
+    font-variant-numeric:tabular-nums;
+  }
+  .hero .sub{
+    display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:6px;
+    font-size:.9rem;color:var(--ink-2);
+  }
+  .chip{
+    display:inline-flex;align-items:center;gap:5px;
+    font-family:var(--mono);font-size:.78rem;font-weight:600;
+    padding:3px 10px;border-radius:999px;
+  }
+  .chip.up{background:var(--pine-soft);color:var(--pine)}
+  .chip.down{background:var(--red-soft);color:var(--red)}
+  .chip.flat{background:var(--bg);color:var(--ink-2)}
+  .chip.warn{background:var(--amber-soft);color:var(--amber)}
+
+  /* ---------- cartões KPI ---------- */
+  .kpis{
+    display:grid;gap:14px;
+    grid-template-columns:repeat(auto-fill,minmax(240px,1fr));
+    padding:26px 0 8px;
+  }
+  .kpi{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:16px 18px 14px;
+  }
+  .kpi .name{
+    font-family:var(--mono);font-size:.72rem;letter-spacing:.07em;
+    text-transform:uppercase;color:var(--ink-2);margin-bottom:8px;
+  }
+  .kpi .val{
+    font-family:var(--disp);font-weight:700;font-size:1.7rem;
+    letter-spacing:-.01em;font-variant-numeric:tabular-nums;
+    margin-bottom:6px;
+  }
+  .kpi .val.alert{color:var(--red)}
+  .kpi .foot{font-size:.8rem;color:var(--ink-2)}
+
+  /* ---------- seções ---------- */
+  section.block{padding:28px 0 6px}
+  .block h2{
+    font-family:var(--disp);font-weight:700;font-size:1.15rem;
+    text-transform:uppercase;letter-spacing:.02em;
+    border-left:4px solid var(--pine);padding-left:10px;margin-bottom:14px;
+  }
+  .charts{
+    display:grid;gap:14px;
+    grid-template-columns:repeat(auto-fit,minmax(320px,1fr));
+  }
+  .panel{
+    background:var(--card);border:1px solid var(--line);
+    border-radius:10px;padding:16px 18px;
+  }
+  .panel h3{
+    font-family:var(--mono);font-size:.75rem;font-weight:600;
+    letter-spacing:.07em;text-transform:uppercase;color:var(--ink-2);
+    margin-bottom:10px;
+  }
+  .panel .cv{position:relative;height:250px}
+
+  /* ---------- tabela ---------- */
+  .tablewrap{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:10px}
+  table{border-collapse:collapse;width:100%;min-width:560px}
+  th,td{
+    padding:10px 14px;text-align:right;
+    font-variant-numeric:tabular-nums;font-size:.87rem;
+    border-bottom:1px solid var(--line);
+  }
+  th{
+    font-family:var(--mono);font-size:.72rem;letter-spacing:.06em;
+    text-transform:uppercase;color:var(--ink-2);background:var(--bg);
+  }
+  th:first-child,td:first-child{text-align:left}
+  td:first-child{font-weight:500}
+  tr:last-child td{border-bottom:none}
+  td.mono{font-family:var(--mono)}
+  td .delta{font-size:.75rem;margin-left:6px}
+  .delta.up{color:var(--pine)}
+  .delta.down{color:var(--red)}
+
+  /* ---------- atualizar dados ---------- */
+  .drop{
+    margin-top:14px;
+    border:2px dashed var(--line);border-radius:10px;
+    padding:22px;text-align:center;color:var(--ink-2);
+    font-size:.88rem;cursor:pointer;background:var(--card);
+    transition:border-color .15s,background .15s;
+  }
+  .drop.on,.drop:hover{border-color:var(--pine);background:var(--pine-soft)}
+  .drop strong{color:var(--pine)}
+  .drop input{display:none}
+
+  footer{
+    margin-top:36px;padding:22px 0 30px;
+    border-top:1px solid var(--line);
+    font-family:var(--mono);font-size:.75rem;color:var(--ink-2);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="brand">
+      <h1>Controle Financeiro</h1>
+      <span class="tag">ITENS DO I-LOG</span>
+    </div>
+    <div class="updated" id="updated"></div>
+  </div>
+</header>
+
+<nav class="snapbar" aria-label="Selecionar data do fechamento">
+  <div class="wrap">
+    <span class="label">Fechamento:</span>
+    <div id="snaps" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+  </div>
+</nav>
+
+<main class="wrap">
+
+  <div class="hero">
+    <div class="eyebrow">Faturamento acumulado no mês</div>
+    <div class="big" id="fatBig">—</div>
+    <div class="sub" id="fatSub"></div>
+  </div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <section class="block">
+    <h2>Evolução</h2>
+    <div class="charts">
+      <div class="panel">
+        <h3>Faturamento (R$)</h3>
+        <div class="cv"><canvas id="chFat"></canvas></div>
+      </div>
+      <div class="panel">
+        <h3>Rentabilidade × Despesa (%)</h3>
+        <div class="cv"><canvas id="chPct"></canvas></div>
+      </div>
+      <div class="panel">
+        <h3>Cotações — abertas × vencidas</h3>
+        <div class="cv"><canvas id="chCot"></canvas></div>
+      </div>
+      <div class="panel">
+        <h3>Backlog e processos faturados</h3>
+        <div class="cv"><canvas id="chOps"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Todos os indicadores</h2>
+    <div class="tablewrap">
+      <table id="tbl" aria-label="Tabela completa de indicadores"></table>
+    </div>
+
+    <label class="drop" id="drop" tabindex="0">
+      Para atualizar o painel, <strong>arraste aqui a planilha CONTROLE_FINANCEIRO.xlsx</strong> ou clique para escolher o arquivo.
+      Os dados são lidos só no seu navegador — nada é enviado a servidor.
+      <input type="file" id="file" accept=".xlsx,.xlsm">
+    </label>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">CONTROLE FINANCEIRO · gerado a partir de CONTROLE_FINANCEIRO.xlsx · valores em BRL salvo indicação</div>
+</footer>
+
+<script>
+/* ================= dados padrão (da planilha enviada) ================= */
+let DATA = {
+  dates: ['2026-07-07','2026-07-13','2026-07-16','2026-07-20'],
+  rows: [
+    {key:'FATURAMENTO',                    label:'Faturamento',                     fmt:'brl', vals:[911203.39,1385771.03,1815626.03,2266388.95]},
+    {key:'RENTABILIDADE FAT.',             label:'Rentabilidade fat.',              fmt:'pct', vals:[0.1799,0.1852,0.2714,0.2078]},
+    {key:'RENTABILIDADE FAT. ACUMULADO',   label:'Rentabilidade acumulada',         fmt:'pct', vals:[0.1338,0.1346,0.1429,0.1382]},
+    {key:'% DESPESA',                      label:'% Despesa',                       fmt:'pct', vals:[0.0824,0.0576,0.1534,0.1432], invert:true},
+    {key:'% DESPESA ACUMULADO',            label:'% Despesa acumulada',             fmt:'pct', vals:[0.2060,0.2009,0.2070,0.2044], invert:true},
+    {key:'BACKLOG',                        label:'Backlog',                         fmt:'int', vals:[217,233,237,255]},
+    {key:'DÓLAR',                          label:'Dólar (R$)',                      fmt:'fx',  vals:[5.1464,5.1157,5.0976,5.0964]},
+    {key:'DÓLAR X EURO',                   label:'Dólar × Euro',                    fmt:'fx',  vals:[0.1422,0.1427,0.1458,0.1424]},
+    {key:'QTDE DE PROCESSOS FAT',          label:'Processos faturados',             fmt:'int', vals:[27,49,63,77]},
+    {key:'RELATÓRIO DE COTAÇÃO ABERTOS',   label:'Cotações abertas',                fmt:'int', vals:[81,84,101,122]},
+    {key:'RELATÓRIO DE COTAÇÃO VENCIDOS',  label:'Cotações vencidas',               fmt:'int', vals:[0,35,49,49], invert:true},
+  ]
+};
+let sel = DATA.dates.length - 1;   // fechamento selecionado
+let charts = [];
+
+/* ================= formatação ================= */
+const fBRL = new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'});
+const fBRL0 = new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0});
+const fPct = v => (v*100).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+'%';
+const fInt = v => v.toLocaleString('pt-BR');
+const fFx  = v => v.toLocaleString('pt-BR',{minimumFractionDigits:4,maximumFractionDigits:4});
+function fmt(v,f){return f==='brl'?fBRL.format(v):f==='pct'?fPct(v):f==='fx'?fFx(v):fInt(v);}
+function fDate(iso){const [y,m,d]=iso.split('-');return `${d}/${m}/${y}`;}
+function fDateShort(iso){const [,m,d]=iso.split('-');return `${d}/${m}`;}
+
+/* ================= render ================= */
+function deltaChip(cur, prev, row){
+  if(prev==null) return '';
+  const d = cur - prev;
+  if(Math.abs(d) < 1e-12) return '<span class="chip flat">= estável</span>';
+  const good = row.invert ? d < 0 : d > 0;
+  const arrow = d > 0 ? '▲' : '▼';
+  let txt;
+  if(row.fmt==='pct') txt = (Math.abs(d)*100).toLocaleString('pt-BR',{maximumFractionDigits:2})+' p.p.';
+  else if(row.fmt==='brl') txt = fBRL0.format(Math.abs(d));
+  else if(row.fmt==='fx') txt = fFx(Math.abs(d));
+  else txt = fInt(Math.abs(d));
+  return `<span class="chip ${good?'up':'down'}">${arrow} ${txt}</span>`;
+}
+
+function render(){
+  const dates = DATA.dates, i = sel, prev = i>0 ? i-1 : null;
+  const get = k => DATA.rows.find(r=>r.key.startsWith(k));
+
+  document.getElementById('updated').textContent =
+    `Última atualização da base: ${fDate(dates[dates.length-1])} · exibindo fechamento de ${fDate(dates[i])}`;
+
+  /* abas */
+  const snaps = document.getElementById('snaps');
+  snaps.innerHTML = '';
+  dates.forEach((d,ix)=>{
+    const b = document.createElement('button');
+    b.className='snap'; b.textContent=fDate(d);
+    b.setAttribute('aria-pressed', ix===i ? 'true':'false');
+    b.onclick=()=>{sel=ix;render();};
+    snaps.appendChild(b);
+  });
+
+  /* destaque */
+  const fat = get('FATURAMENTO');
+  document.getElementById('fatBig').textContent = fBRL.format(fat.vals[i]);
+  const rent = get('RENTABILIDADE FAT.'), rentAc = get('RENTABILIDADE FAT. ACUMULADO');
+  document.getElementById('fatSub').innerHTML =
+    (prev!=null ? deltaChip(fat.vals[i],fat.vals[prev],fat) : '') +
+    `<span>Rentabilidade do fechamento: <strong>${fPct(rent.vals[i])}</strong></span>` +
+    `<span>Acumulada: <strong>${fPct(rentAc.vals[i])}</strong></span>`;
+
+  /* KPIs */
+  const kpiKeys = ['% DESPESA','% DESPESA ACUMULADO','BACKLOG','QTDE DE PROCESSOS FAT',
+                   'RELATÓRIO DE COTAÇÃO ABERTOS','RELATÓRIO DE COTAÇÃO VENCIDOS','DÓLAR','DÓLAR X EURO'];
+  const kpis = document.getElementById('kpis');
+  kpis.innerHTML = '';
+  kpiKeys.forEach(k=>{
+    const r = DATA.rows.find(x=>x.key===k) || DATA.rows.find(x=>x.key.startsWith(k));
+    if(!r) return;
+    const isAlert = r.key==='RELATÓRIO DE COTAÇÃO VENCIDOS' && r.vals[i] > 0;
+    kpis.insertAdjacentHTML('beforeend', `
+      <div class="kpi">
+        <div class="name">${r.label}</div>
+        <div class="val${isAlert?' alert':''}">${fmt(r.vals[i],r.fmt)}</div>
+        <div class="foot">${prev!=null ? deltaChip(r.vals[i],r.vals[prev],r)+' vs '+fDateShort(dates[prev]) : 'primeiro fechamento'}</div>
+      </div>`);
+  });
+
+  /* tabela */
+  const tbl = document.getElementById('tbl');
+  let html = '<thead><tr><th>Indicador</th>' + dates.map(d=>`<th>${fDate(d)}</th>`).join('') + '</tr></thead><tbody>';
+  DATA.rows.forEach(r=>{
+    html += `<tr><td>${r.label}</td>` + r.vals.map((v,ix)=>{
+      let cell = `<td class="mono">${fmt(v,r.fmt)}`;
+      if(ix>0){
+        const d=v-r.vals[ix-1];
+        if(Math.abs(d)>1e-12){
+          const good = r.invert ? d<0 : d>0;
+          cell += `<span class="delta ${good?'up':'down'}">${d>0?'▲':'▼'}</span>`;
+        }
+      }
+      return cell+'</td>';
+    }).join('') + '</tr>';
+  });
+  tbl.innerHTML = html + '</tbody>';
+
+  drawCharts();
+}
+
+/* ================= gráficos ================= */
+function drawCharts(){
+  charts.forEach(c=>c.destroy()); charts=[];
+  const labels = DATA.dates.map(fDateShort);
+  const get = k => DATA.rows.find(r=>r.key.startsWith(k));
+  const css = getComputedStyle(document.documentElement);
+  const PINE = css.getPropertyValue('--pine').trim(),
+        AMBER= css.getPropertyValue('--amber').trim(),
+        RED  = css.getPropertyValue('--red').trim(),
+        INK2 = css.getPropertyValue('--ink-2').trim(),
+        LINE = css.getPropertyValue('--line').trim();
+  Chart.defaults.font.family = "'IBM Plex Mono', monospace";
+  Chart.defaults.font.size = 11;
+  Chart.defaults.color = INK2;
+  const grid = {color:LINE};
+
+  charts.push(new Chart(chFat,{type:'bar',data:{labels,datasets:[
+    {label:'Faturamento',data:get('FATURAMENTO').vals,backgroundColor:PINE,borderRadius:4,maxBarThickness:64}]},
+    options:{maintainAspectRatio:false,plugins:{legend:{display:false},
+      tooltip:{callbacks:{label:c=>fBRL.format(c.parsed.y)}}},
+      scales:{y:{grid,ticks:{callback:v=>'R$ '+(v/1e6).toLocaleString('pt-BR')+' mi'}},x:{grid:{display:false}}}}}));
+
+  charts.push(new Chart(chPct,{type:'line',data:{labels,datasets:[
+    {label:'Rentab. fat.',data:get('RENTABILIDADE FAT.').vals.map(v=>v*100),borderColor:PINE,backgroundColor:PINE,tension:.3},
+    {label:'Rentab. acum.',data:get('RENTABILIDADE FAT. ACUMULADO').vals.map(v=>v*100),borderColor:PINE,borderDash:[5,4],backgroundColor:PINE,tension:.3},
+    {label:'% Despesa',data:get('% DESPESA').vals.map(v=>v*100),borderColor:RED,backgroundColor:RED,tension:.3},
+    {label:'% Desp. acum.',data:get('% DESPESA ACUMULADO').vals.map(v=>v*100),borderColor:RED,borderDash:[5,4],backgroundColor:RED,tension:.3}]},
+    options:{maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:10,boxHeight:10}},
+      tooltip:{callbacks:{label:c=>c.dataset.label+': '+c.parsed.y.toLocaleString('pt-BR',{maximumFractionDigits:2})+'%'}}},
+      scales:{y:{grid,ticks:{callback:v=>v+'%'}},x:{grid:{display:false}}}}}));
+
+  charts.push(new Chart(chCot,{type:'bar',data:{labels,datasets:[
+    {label:'Abertas',data:get('RELATÓRIO DE COTAÇÃO ABERTOS').vals,backgroundColor:AMBER,borderRadius:4,maxBarThickness:44},
+    {label:'Vencidas',data:get('RELATÓRIO DE COTAÇÃO VENCIDOS').vals,backgroundColor:RED,borderRadius:4,maxBarThickness:44}]},
+    options:{maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:10,boxHeight:10}}},
+      scales:{y:{grid,beginAtZero:true},x:{grid:{display:false}}}}}));
+
+  charts.push(new Chart(chOps,{type:'line',data:{labels,datasets:[
+    {label:'Backlog',data:get('BACKLOG').vals,borderColor:PINE,backgroundColor:PINE,tension:.3},
+    {label:'Processos faturados',data:get('QTDE DE PROCESSOS FAT').vals,borderColor:AMBER,backgroundColor:AMBER,tension:.3}]},
+    options:{maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:10,boxHeight:10}}},
+      scales:{y:{grid,beginAtZero:true},x:{grid:{display:false}}}}}));
+}
+
+/* ================= atualizar via .xlsx ================= */
+const EXCEL_EPOCH = Date.UTC(1899,11,30);
+function serialToISO(n){
+  const d = new Date(EXCEL_EPOCH + Math.round(n)*86400000);
+  return d.toISOString().slice(0,10);
+}
+function parseWorkbook(buf){
+  const wb = XLSX.read(buf,{type:'array'});
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws,{header:1,raw:true});
+  // acha a linha de cabeçalho: começa com "ITENS"
+  const hi = rows.findIndex(r=>r && typeof r[0]==='string' && r[0].toUpperCase().includes('ITENS'));
+  if(hi<0) throw new Error('Cabeçalho "ITENS DO I-LOG" não encontrado na primeira aba.');
+  const header = rows[hi];
+  const dates = header.slice(1).filter(v=>typeof v==='number').map(serialToISO);
+  if(!dates.length) throw new Error('Nenhuma coluna de data encontrada.');
+  const newRows = [];
+  for(let i=hi+1;i<rows.length;i++){
+    const r = rows[i];
+    if(!r || typeof r[0]!=='string' || !r[0].trim()) continue;
+    const key = r[0].trim().toUpperCase();
+    const vals = r.slice(1,1+dates.length).map(Number);
+    if(vals.some(v=>isNaN(v))) continue;
+    const known = DATA.rows.find(x=>x.key===key || key.startsWith(x.key));
+    newRows.push({
+      key, label: known ? known.label : r[0].trim(),
+      fmt: known ? known.fmt : (key.includes('%')||key.includes('RENTAB') ? 'pct' : 'int'),
+      invert: known ? known.invert : undefined,
+      vals
+    });
+  }
+  if(!newRows.length) throw new Error('Nenhum indicador numérico encontrado.');
+  return {dates, rows:newRows};
+}
+function loadFile(file){
+  const rd = new FileReader();
+  rd.onload = e=>{
+    try{
+      DATA = parseWorkbook(new Uint8Array(e.target.result));
+      sel = DATA.dates.length-1;
+      render();
+      drop.innerHTML = '✓ Painel atualizado com <strong>'+file.name+'</strong>. Arraste outro arquivo para atualizar de novo.<input type="file" id="file" accept=".xlsx,.xlsm">';
+      bindInput();
+    }catch(err){
+      drop.innerHTML = 'Não consegui ler o arquivo: '+err.message+' <strong>Tente novamente.</strong><input type="file" id="file" accept=".xlsx,.xlsm">';
+      bindInput();
+    }
+  };
+  rd.readAsArrayBuffer(file);
+}
+const drop = document.getElementById('drop');
+function bindInput(){
+  document.getElementById('file').addEventListener('change',e=>{
+    if(e.target.files[0]) loadFile(e.target.files[0]);
+  });
+}
+bindInput();
+drop.addEventListener('dragover',e=>{e.preventDefault();drop.classList.add('on');});
+drop.addEventListener('dragleave',()=>drop.classList.remove('on'));
+drop.addEventListener('drop',e=>{
+  e.preventDefault();drop.classList.remove('on');
+  if(e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+});
+drop.addEventListener('keydown',e=>{
+  if(e.key==='Enter'||e.key===' '){e.preventDefault();document.getElementById('file').click();}
+});
+
+render();
+</script>
+</body>
+</html>
